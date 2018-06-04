@@ -85,6 +85,7 @@ node ('python') {
           env.OS_USERNAME = OS_USERNAME
           env.OS_PASSWORD = OS_PASSWORD
           env.OS_PROJECT_NAME = OS_PROJECT_NAME
+          env.OS_AUTH_URL = 'https://cloud-cz.bud.mirantis.net:5000'
           if (OPENSTACK_ENVIRONMENT == 'presales') {
             env.OS_AUTH_URL = 'https://lab.mirantis.com:5000/v2.0'
             env.OS_REGION_NAME = 'RegionOne'
@@ -187,7 +188,8 @@ node ('python') {
             [$class: 'StringParameterValue', name: 'COOKIECUTTER_TEMPLATE_CONTEXT', value: COOKIECUTTER_TEMPLATE_CONTEXT ],
           ])
     // TODO need to change logic to get not last build but needed artifact
-    sh "wget --progress=dot:mega --auth-no-challenge -O cfg01.${STACK_NAME}-config.iso '${env.JENKINS_URL}/job/generate-salt-model-separated-products/lastSuccessfulBuild/artifact/output-${STACK_NAME}/cfg01.${STACK_NAME}.local-config.iso'"
+    jurl = " http://mc0n1-kha.kha.mirantis.net:8090/"
+    sh "wget --progress=dot:mega --auth-no-challenge -O cfg01.${STACK_NAME}-config.iso ${jurl}job/generate-salt-model-separated-products/lastSuccessfulBuild/artifact/output-${STACK_NAME}/cfg01.${STACK_NAME}.local-config.iso"
   }
   stage ('Extract config drive image'){
     sh "rm -rf /tmp/cfg01.${STACK_NAME}-config"
@@ -371,7 +373,7 @@ node ('python') {
             [$class: 'StringParameterValue', name: 'OS_PROJECT_NAME', value: OS_PROJECT_NAME],
             [$class: 'StringParameterValue', name: 'OS_AZ', value: OS_AZ],
             [$class: 'StringParameterValue', name: 'STACK_NAME', value: STACK_NAME],
-            [$class: 'BooleanParameterValue', name: 'DELETE_STACK', value: Boolean.valueOf(true)],
+            [$class: 'BooleanParameterValue', name: 'DELETE_STACK', value: DELETE_STACK.toBoolean()],
             [$class: 'StringParameterValue', name: 'COMPUTE_NODES_COUNT', value: COMPUTE_NODES_COUNT],
             [$class: 'StringParameterValue', name: 'MCP_VERSION', value: mcpVersion],
             [$class: 'StringParameterValue', name: 'FLAVOR_PREFIX', value: FLAVOR_PREFIX],
