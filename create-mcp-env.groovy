@@ -1,4 +1,79 @@
+/**
+ *
+ * Pipeline which creates environment from cookiecutter template
+ * Pipeline stages:
+ *  - Handle old heat stack
+ *  - Generate model
+ *  - Rebuild config drive (Extract config drive image; Modify config drive image; Build config drive image)
+ *  - Delete old image
+ *  - Upload image
+ *  - Collect artifatcs
+ *  - Update VMs images if needed
+ *  - Update day01 image if needed
+ *  - Deploy heat stack
+ *  - Provision nodes using MAAS (Optional)
+ *  - Deploy open stack
+ *
+ * Flow parameters:
+ *   STACK_NAME                             The name of a stack which will be used with the image
+ *   STACK_FULL                             Create multi KVM node heat stack
+ *
+ *   COOKIECUTTER_TEMPLATE_CREDENTIALS_ID   Gerrit credentials to use for coockiecutter template repo.
+ *   COOKIECUTTER_TEMPLATE_URL              Link to the project with cookiectutter templates.
+ *   COOKIECUTTER_TEMPLATE_BRANCH           Ref/branch for cookiectutter templates.
+ *   COOKIECUTTER_TEMPLATE_CONTEXT_FILE     Context for coockiecutter template specified as filename.
+ *   COOKIECUTTER_TEMPLATE_CONTEXT          The exact context to be used in cookiecutter. Is not used when COOKIECUTTER_TEMPLATE_CONTEXT_FILE specified.
+ *
+ *   REFSPEC                                Gerrit review for mcp-env/pipelines repo
+ *   HEAT_TEMPLATES_REFSPEC                 Gerrit review for mcp-env/heat-templates repo
+ *
+ *   OS_PROJECT_NAME                        OpenStack project to work within the cloud. Please specify your OS_PROJECT_NAME
+ *   OS_AZ                                  OpenStack availability zone to spawn heat stack. Please specify your AZ
+ *   OPENSTACK_ENVIRONMENT                  Choose target openstack environment to build environment (devcloud/presales)
+ *
+ *   DELETE_STACK                           Delete stack with the same name
+ *   STACK_INSTALL                          Comma separated list of components to install
+ *
+ *   MAAS_ENABLE                            Hosts provisioning using MAAS
+ *
+ *   COMPUTE_BUNCH                          Create Heat stack with CMP bunch
+ *   FLAVOR_PREFIX                          Flavor to use for environment (dev/compact)
+ *   COMPUTE_NODES_COUNT                    The number of compute nodes to add to env
+ *
+ * Test parameters:
+ *   REPORT_CLUSTER_DEPLOYMENT_TO_TESTRAIL  Would you like to send test deployment report to TestRail?
+ *   REPORT_RALLY_RESULTS_TO_TESTRAIL       Would you like to publish rally results to TestRail?
+ *   REPORT_RALLY_RESULTS_TO_SCALE          Would you like to publish rally results to http://infra-k8s.mcp-scale.mirantis.net:8888/?
+ *
+ **/
+
 import java.text.SimpleDateFormat
+
+def gitL = new com.mirantis.mk.Git()
+def common = new com.mirantis.mk.Common()
+def gerrit = new com.mirantis.mk.Gerrit()
+
+def cookiecutterTemplateURL = 'https://gerrit.mcp.mirantis.net/mk/cookiecutter-templates.git'
+if (common.validInputParam('COOKIECUTTER_TEMPLATE_URL')) {
+    cookiecutterTemplateURL = COOKIECUTTER_TEMPLATE_URL
+}
+
+def cookiecutterTemplateBranch = 'master'
+if (common.validInputParam('COOKIECUTTER_TEMPLATE_BRANCH')) {
+    cookiecutterTemplateBranch = COOKIECUTTER_TEMPLATE_BRANCH
+}
+
+def cookiecutterTemplateContextFile = ''
+if (common.validInputParam('COOKIECUTTER_TEMPLATE_CONTEXT_FILE')) {
+    cookiecutterTemplateContextFile = COOKIECUTTER_TEMPLATE_CONTEXT_FILE
+}
+
+def cookiecutterTemplateCredentialsID = 'gerrit'
+if (common.validInputParam('COOKIECUTTER_TEMPLATE_CREDENTIALS_ID')) {
+    cookiecutterTemplateCredentialsID = COOKIECUTTER_TEMPLATE_CREDENTIALS_ID
+}
+
+def templateContext
 
 node ('python') {
   currentBuild.description = STACK_NAME
@@ -38,8 +113,24 @@ node ('python') {
   stage ('Generate model'){
     // Update cluster_domain, cluster_name, openldap_domain, openstack_compute_count,
     // from job parameters
-    templateContext = readYaml text: COOKIECUTTER_TEMPLATE_CONTEXT
-    tmp_template_file = WORKSPACE + "/" + JOB_NAME + ".yaml"
+    if (cookiecutterTemplateContextFile){
+        def checkouted = false
+        def cookiecutterTemplateContextFilePath = "cookiecutter-templates/contexts/${cookiecutterTemplateContextFile}.yml"
+        if (cookiecutterTemplateBranch.startsWith("ref")){
+            checkouted = gerrit.gerritPatchsetCheckout(cookiecutterTemplateURL, cookiecutterTemplateBranch, 'HEAD', cookiecutterTemplateCredentialsID)
+        } else {
+            checkouted = gitL.checkoutGitRepository("cookiecutter-templates", cookiecutterTemplateURL, cookiecutterTemplateBranch, cookiecutterTemplateCredentialsID)
+        }
+        if (checkouted && fileExists("${cookiecutterTemplateContextFilePath}")){
+            templateContext = readYaml(file: "${cookiecutterTemplateContextFilePath}")
+        } else {
+            error("Cannot checkout gerrit or context file doesn't exists.")
+        }
+    } else {
+        templateContext = readYaml text: COOKIECUTTER_TEMPLATE_CONTEXT
+    }
+
+    tmp_template_file = WORKSPACE +"/" + JOB_NAME + ".yaml"
     sh "rm -f " + tmp_template_file
     templateContext['default_context']['cluster_domain'] = STACK_NAME + ".local"
     templateContext['default_context']['cluster_name'] = STACK_NAME
