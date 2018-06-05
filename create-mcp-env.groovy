@@ -48,6 +48,7 @@
  **/
 
 import java.text.SimpleDateFormat
+import static groovy.json.JsonOutput.toJson
 
 def gitL = new com.mirantis.mk.Git()
 def common = new com.mirantis.mk.Common()
@@ -178,14 +179,12 @@ node ('python') {
       }
     }
     if ( MAAS_ENABLE.toBoolean() && kubernetes_enabled ) { templateContext['default_context']['kubernetes_keepalived_vip_interface'] = "one1" }
-    writeYaml file: tmp_template_file, data: templateContext
-    COOKIECUTTER_TEMPLATE_CONTEXT = readFile tmp_template_file
     archiveArtifacts artifacts: JOB_NAME + ".yaml"
     sh "rm -f " + tmp_template_file
-    print("Using context:\n" + COOKIECUTTER_TEMPLATE_CONTEXT)
+    print("Using context:\n" + toJson(templateContext))
     build(job: 'generate-salt-model-separated-products',
           parameters: [
-            [$class: 'StringParameterValue', name: 'COOKIECUTTER_TEMPLATE_CONTEXT', value: COOKIECUTTER_TEMPLATE_CONTEXT ],
+            [$class: 'StringParameterValue', name: 'COOKIECUTTER_TEMPLATE_CONTEXT', value: toJson(templateContext) ],
           ])
     // TODO need to change logic to get not last build but needed artifact
     jurl = " http://mc0n1-kha.kha.mirantis.net:8090/"
